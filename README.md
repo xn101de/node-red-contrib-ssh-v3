@@ -10,6 +10,18 @@
 
 ssh connection remote host.
 
+> **Hardened fork** (`@xn101de/node-red-contrib-ssh-v3`, not published to npm) of
+> [william89731/node-red-contrib-ssh-v3](https://github.com/william89731/node-red-contrib-ssh-v3) 2.0.5:
+> - **Host key pinning, required.** The ssh-conf node takes the server's OpenSSH
+>   `SHA256:` fingerprint (`ssh-keyscan -t ed25519 HOST | ssh-keygen -lf -`). Upstream
+>   accepted any host key (ssh2 default), i.e. no MITM protection. Missing or wrong
+>   fingerprint → connection refused, presented fingerprint logged.
+> - Passphrase for encrypted private keys (upstream #13).
+> - An exec error no longer crashes Node-RED (upstream #16, fix from PR #22).
+>
+> Install pinned to a commit: `npm install github:xn101de/node-red-contrib-ssh-v3#<sha>`
+> in the Node-RED user dir.
+
 ### installation
 
 ![Schermata del 2022-09-17 06-29-57](https://user-images.githubusercontent.com/68069659/190840457-8a8a09c0-ab3c-4dc7-bcd7-dfe18ef8e768.png)
