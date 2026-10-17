@@ -3,6 +3,7 @@
         category: 'config',
         defaults: {
             ssh: { value: "" },
+            fingerprint: { value: "", required: true, validate: RED.validators.regex(/^SHA256:[A-Za-z0-9+\/]{43}$/) },
             name: { value: "" },
             userlabel: { value: "" }
 
@@ -10,6 +11,7 @@
         credentials: {
             username: { type: "text" },
             password: { type: "password" },
+            passphrase: { type: "password" },
             hostname: { value: "" },
             port: { value: "22" },
         },
@@ -55,11 +57,28 @@
     <div class="form-row">
         <label for="node-config-input-ssh"><i class="fa fa-podcast"></i> Ssh</label>
         <input type="text" id="node-config-input-ssh" placeholder="/home/user/.ssh/id_rsa">
-    </div> 
+    </div>
+
+    <div class="form-row">
+        <label for="node-config-input-passphrase"><i class="fa fa-lock"></i> Key passphrase</label>
+        <input type="password" id="node-config-input-passphrase" placeholder="optional">
+    </div>
+
+    <div class="form-row">
+        <label for="node-config-input-fingerprint"><i class="fa fa-shield"></i> Host key</label>
+        <input type="text" id="node-config-input-fingerprint" placeholder="SHA256:...">
+    </div>
+    <div class="form-tips">
+        Required. Get it on a trusted path: <code>ssh-keyscan -t ed25519 HOST | ssh-keygen -lf -</code>
+        (or on the host itself: <code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code>).
+        The connection is refused if the server presents a different key.
+    </div>
 </script>
 
 <script type="text/x-red" data-help-name="ssh-conf">
-    <p> ssh configuration</p>
+    <p>SSH connection settings.</p>
+    <p><b>Host key</b> pins the server's public key (OpenSSH <code>SHA256:</code> fingerprint).
+    Without it, or on mismatch, the node refuses to connect and logs the fingerprint the server presented.</p>
 </script>
 
 

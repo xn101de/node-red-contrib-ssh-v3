@@ -1,7 +1,14 @@
 'use strict';
 
+const crypto = require('crypto');
 const { Client } = require('ssh2');
 const { Mutex } = require('async-mutex');
+
+// OpenSSH-style fingerprint of a raw host key blob: "SHA256:<base64, no padding>"
+// (same format as `ssh-keyscan host | ssh-keygen -lf -`).
+function fingerprintOf(key) {
+	return 'SHA256:' + crypto.createHash('sha256').update(key).digest('base64').replace(/=+$/, '');
+}
 
 module.exports = function (RED) {
 
@@ -53,20 +60,44 @@ module.exports = function (RED) {
 		});
 
 
-		node.client.connect(node.conf.options);
+		const pinned = (node.conf.fingerprint || '').trim();
+		node.client.connect(Object.assign({}, node.conf.options, {
+			// ssh2 auto-accepts any host key when hostVerifier is absent -> MITM.
+			// Fail closed: no pinned fingerprint, no connection.
+			hostVerifier: (key) => {
+				const presented = fingerprintOf(key);
+				if (!pinned) {
+					node.error(`Host key not pinned for ${node.conf.options.host}; server presented ${presented}. Set it in the ssh-conf node after verifying it out of band.`);
+					return false;
+				}
+				if (presented !== pinned) {
+					node.error(`HOST KEY MISMATCH for ${node.conf.options.host}: expected ${pinned}, got ${presented}. Refusing to connect.`);
+					return false;
+				}
+				return true;
+			}
+		}));
 	};
 
 	function SshConf(n) {
 		RED.nodes.createNode(this,n);
 		const node = this;
+		node.fingerprint = n.fingerprint;
+		let privateKey;
+		if (n.ssh) {
+			try {
+				privateKey = require('fs').readFileSync(n.ssh);
+			} catch (err) {
+				node.error(`Cannot read private key ${n.ssh}: ${err.message}`);
+			}
+		}
 		node.options = {
 			host: node.credentials.hostname ? node.credentials.hostname : undefined,
 			port: node.credentials.port ? node.credentials.port : undefined,
 			username: node.credentials.username ? node.credentials.username : undefined,
 			password: node.credentials.password ? node.credentials.password : undefined,
-			privateKey: n.ssh ? require('fs').readFileSync(n.ssh) : undefined
-			// TODO privatekey with passphrase will fail
-			// passphrase: "passphraseofprivatekey"
+			privateKey: privateKey,
+			passphrase: node.credentials.passphrase ? node.credentials.passphrase : undefined
 		};
 		node.connectMutex = new Mutex();
 		node.sendMutex = new Mutex();
@@ -78,6 +109,7 @@ module.exports = function (RED) {
 		credentials: {
 			username: { type: "text" },
 			password: { type: "password" },
+			passphrase: { type: "password" },
 			hostname: { value: "" },
 			port: { value: "" },
 		}
@@ -139,9 +171,13 @@ module.exports = function (RED) {
 				};
 
 				const wait = conn.exec(msg.payload, (err, stream) => {
+					// Was `throw err`: an uncaught exception that took down the whole
+					// Node-RED process (issue #16). Fix from upstream PR #22 (alex2844).
 					if (err) {
-						node.log("Ssh client error in input.");
-						throw err;
+						node.error("Ssh client error on exec: " + err.message, msg);
+						release();
+						done(err);
+						return;
 					}
 
 					stream.on('close', function (code, signal) {
